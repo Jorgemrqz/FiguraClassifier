@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.TextView;
 import android.widget.Toast;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -23,6 +24,7 @@ public class MainActivity extends AppCompatActivity {
     private DrawingView drawingView;
     private Button btnClasificar;
     private Button btnLimpiar;
+    private TextView textResultado; // NUEVO
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
         drawingView = findViewById(R.id.drawingView);
         btnClasificar = findViewById(R.id.btnClasificar);
         btnLimpiar = findViewById(R.id.btnLimpiar);
+        textResultado = findViewById(R.id.textResultado); // NUEVO
 
         // Configuración del botón "Clasificar"
         btnClasificar.setOnClickListener(v -> procesarYClasificarFigura());
@@ -66,12 +69,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void mostrarResultado(String resultado) {
-        Toast.makeText(this, "Figura clasificada como: " + resultado, Toast.LENGTH_SHORT).show();
+        textResultado.setText("Resultado: " + resultado); // CAMBIO: mostrar en el TextView
     }
 
     private void limpiarDibujo() {
-        // Limpiar el área de dibujo en la vista DrawingView
         drawingView.limpiar();
+        textResultado.setText("Resultado: -"); // LIMPIAR TEXTO TAMBIÉN
         Toast.makeText(this, "Área de dibujo limpia", Toast.LENGTH_SHORT).show();
     }
 
@@ -79,12 +82,10 @@ public class MainActivity extends AppCompatActivity {
     private String leerArchivoDesdeAssets() {
         StringBuilder stringBuilder = new StringBuilder();
         try {
-            // Acceder al archivo desde assets
             InputStream inputStream = getAssets().open("dataset.csv");
             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
             String line;
             while ((line = reader.readLine()) != null) {
-                // Agregar cada línea del archivo CSV al StringBuilder
                 stringBuilder.append(line).append("\n");
             }
             reader.close();

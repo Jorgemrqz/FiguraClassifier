@@ -127,71 +127,185 @@ double calcularDistanciaEuclidiana(const std::vector<double>& descriptor1, const
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_ups_vision_clasificador_1app_MainActivity_clasificarFigura(JNIEnv* env, jobject /* this */, jbyteArray imageData, jstring datasetPath) {
-    // Obtener el camino al dataset desde Java
-    const char* datasetPathStr = env->GetStringUTFChars(datasetPath, 0);
-
-    __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Ruta del dataset: %s", datasetPathStr);
+Java_ups_vision_clasificador_1app_MainActivity_clasificarFigura(JNIEnv* env, jobject /* this */, jbyteArray imageData, jstring datasetContentJ) {
+    const char* datasetStr = env->GetStringUTFChars(datasetContentJ, 0);
+    std::string dataset(datasetStr);
+    env->ReleaseStringUTFChars(datasetContentJ, datasetStr);
 
     // Convertir la imagen desde jbyteArray a cv::Mat
     jsize length = env->GetArrayLength(imageData);
     jbyte* imageBytes = env->GetByteArrayElements(imageData, 0);
     std::vector<uchar> buf(imageBytes, imageBytes + length);
-    cv::Mat imagen = cv::imdecode(buf, cv::IMREAD_COLOR);  // Decodificar la imagen
-
+    cv::Mat imagen = cv::imdecode(buf, cv::IMREAD_COLOR);
     env->ReleaseByteArrayElements(imageData, imageBytes, 0);
-    env->ReleaseStringUTFChars(datasetPath, datasetPathStr);
 
     if (imagen.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "Error al cargar la imagen.");
         return env->NewStringUTF("Error al cargar la imagen.");
     }
 
-    // Preprocesar la imagen
+    // Preprocesamiento
     cv::Mat imagenPreprocesada = preprocesarImagen(imagen);
 
-    // Calcular los momentos de Hu y la Shape Signature de la imagen a clasificar
     std::vector<double> hu;
     std::vector<float> shapeSignature;
     calcularMomentosYFirma(imagenPreprocesada, hu, shapeSignature);
 
-    __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Momentos de Hu: %f, %f, %f, %f, %f, %f, %f",
-                        hu[0], hu[1], hu[2], hu[3], hu[4], hu[5], hu[6]);
+    if (hu.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "No se pudieron calcular momentos de Hu.");
+        return env->NewStringUTF("Error: sin contornos válidos.");
+    }
 
-    // Cargar los descriptores desde el archivo CSV
+    // Cargar descriptores desde datasetContent (ya no se usa ruta, sino contenido CSV)
+    std::istringstream archivo(dataset);
+    std::string linea;
+
+    // Leer cabecera
+    std::getline(archivo, linea);
+
     std::vector<std::vector<double>> descriptores;
     std::vector<std::string> etiquetas;
-    cargarDescriptores(datasetPathStr, descriptores, etiquetas);
 
-    // Comparar con los descriptores del dataset usando la distancia euclidiana
+    int lineNumber = 1;
+    while (std::getline(archivo, linea)) {
+        lineNumber++;
+        std::vector<double> descriptor;
+        std::string tipoFigura;
+        size_t pos = 0;
+
+        // TipoFigura
+        pos = linea.find(',');
+        if (pos == std::string::npos) continue;
+        tipoFigura = linea.substr(0, pos);
+        linea.erase(0, pos + 1);
+
+        // Momentos 1–7
+        bool formatoValido = true;
+        for (int i = 0; i < 7; ++i) {
+            pos = linea.find(',');
+            if (pos == std::string::npos) {
+                formatoValido = false;
+                break;
+            }
+            try {
+                descriptor.push_back(std::stod(linea.substr(0, pos)));
+            } catch (...) {
+                formatoValido = false;
+                break;
+            }
+            linea.erase(0, pos + 1);
+        }
+
+        if (formatoValido && descriptor.size() == 7) {
+            descriptores.push_back(descriptor);
+            etiquetas.push_back(tipoFigura);
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, LOG_TAG, "Línea %d inválida: %s", lineNumber, tipoFigura.c_str());
+        }
+    }
+
+    if (descriptores.empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "No se cargaron descriptores válidos.");
+        return env->NewStringUTF("Error: dataset vacío o inválido.");
+    }
+
+    // Clasificación: comparar con todos los descriptores
     double menorDistancia = std::numeric_limits<double>::max();
     std::string tipoFigura = "";
 
-    __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Iniciando comparación de descriptores...");
-
-    // Verificar si el bucle de comparación se ejecuta
-    if (descriptores.empty()) {
-        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "Error: No se cargaron descriptores.");
-        return env->NewStringUTF("Error: No se cargaron descriptores.");
-    }
-
     for (size_t i = 0; i < descriptores.size(); ++i) {
-        __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Comparando descriptor %zu", i);
-
-        // Calcular la distancia entre los descriptores
         double distancia = calcularDistanciaEuclidiana(hu, descriptores[i]);
-
-        // Log de la distancia calculada
-        __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Distancia calculada para descriptor %zu: %f", i, distancia);
-
         if (distancia < menorDistancia) {
             menorDistancia = distancia;
             tipoFigura = etiquetas[i];
-            __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Nuevo descriptor más cercano: %s", tipoFigura.c_str());
         }
     }
 
     __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "Figura clasificada como: %s", tipoFigura.c_str());
-
     return env->NewStringUTF(tipoFigura.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ups_vision_clasificador_1app_MainActivity_evaluarSistema(JNIEnv* env, jobject, jstring datasetContentJ) {
+    const char* datasetStr = env->GetStringUTFChars(datasetContentJ, 0);
+    std::string dataset(datasetStr);
+    env->ReleaseStringUTFChars(datasetContentJ, datasetStr);
+
+    std::istringstream archivo(dataset);
+    std::string linea;
+
+    std::getline(archivo, linea);  // Leer cabecera
+
+    std::vector<std::vector<double>> descriptores;
+    std::vector<std::string> etiquetas;
+
+    int lineNumber = 1;
+    while (std::getline(archivo, linea)) {
+        lineNumber++;
+        std::vector<double> descriptor;
+        std::string tipoFigura;
+        size_t pos = 0;
+
+        // Leer etiqueta
+        pos = linea.find(',');
+        if (pos == std::string::npos) continue;
+        tipoFigura = linea.substr(0, pos);
+        linea.erase(0, pos + 1);
+
+        // Leer 7 momentos de Hu
+        bool valido = true;
+        for (int i = 0; i < 7; ++i) {
+            pos = linea.find(',');
+            if (pos == std::string::npos) { valido = false; break; }
+            descriptor.push_back(std::stod(linea.substr(0, pos)));
+            linea.erase(0, pos + 1);
+        }
+
+        if (valido && descriptor.size() == 7) {
+            descriptores.push_back(descriptor);
+            etiquetas.push_back(tipoFigura);
+        }
+    }
+
+    std::vector<std::string> predichos;
+    int correctos = 0;
+
+    // Clasificación Leave-One-Out
+    for (size_t i = 0; i < descriptores.size(); ++i) {
+        double minDist = std::numeric_limits<double>::max();
+        std::string prediccion;
+
+        for (size_t j = 0; j < descriptores.size(); ++j) {
+            if (i == j) continue;
+            double dist = calcularDistanciaEuclidiana(descriptores[i], descriptores[j]);
+            if (dist < minDist) {
+                minDist = dist;
+                prediccion = etiquetas[j];
+            }
+        }
+
+        predichos.push_back(prediccion);
+        if (prediccion == etiquetas[i]) correctos++;
+    }
+
+    // Construir matriz de confusión
+    std::map<std::string, std::map<std::string, int>> matriz;
+    for (size_t i = 0; i < etiquetas.size(); ++i) {
+        matriz[etiquetas[i]][predichos[i]]++;
+    }
+
+    std::ostringstream out;
+    out << "Matriz de Confusión:\n";
+    for (const auto& fila : matriz) {
+        out << fila.first << ": ";
+        for (const auto& col : fila.second) {
+            out << col.first << "=" << col.second << " ";
+        }
+        out << "\n";
+    }
+
+    float precision = (float)correctos / etiquetas.size();
+    out << "\nPrecisión: " << precision;
+
+    return env->NewStringUTF(out.str().c_str());
 }

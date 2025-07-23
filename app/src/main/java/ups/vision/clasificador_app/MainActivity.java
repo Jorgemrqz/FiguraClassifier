@@ -18,13 +18,15 @@ public class MainActivity extends AppCompatActivity {
         System.loadLibrary("clasificador_app");
     }
 
-    // Declarar la función nativa
+    // Funciones nativas
     public native String clasificarFigura(byte[] imageData, String datasetContent);
+    public native String evaluarSistema(String datasetContent);  // NUEVA
 
     private DrawingView drawingView;
     private Button btnClasificar;
     private Button btnLimpiar;
-    private TextView textResultado; // NUEVO
+    private Button btnEvaluar;           // NUEVO
+    private TextView textResultado;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,33 +36,25 @@ public class MainActivity extends AppCompatActivity {
         drawingView = findViewById(R.id.drawingView);
         btnClasificar = findViewById(R.id.btnClasificar);
         btnLimpiar = findViewById(R.id.btnLimpiar);
-        textResultado = findViewById(R.id.textResultado); // NUEVO
+        btnEvaluar = findViewById(R.id.btnEvaluar);   // NUEVO
+        textResultado = findViewById(R.id.textResultado);
 
-        // Configuración del botón "Clasificar"
         btnClasificar.setOnClickListener(v -> procesarYClasificarFigura());
-
-        // Configuración del botón "Limpiar"
         btnLimpiar.setOnClickListener(v -> limpiarDibujo());
+        btnEvaluar.setOnClickListener(v -> evaluarSistema());  // NUEVO
     }
 
     private void procesarYClasificarFigura() {
-        // Obtener el Bitmap de la figura dibujada
         Bitmap bitmap = drawingView.getBitmap();
 
         try {
-            // Convertir Bitmap a byte array
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
             byte[] byteArray = byteArrayOutputStream.toByteArray();
 
-            // Leer el archivo CSV desde assets y convertirlo a un String
             String datasetContent = leerArchivoDesdeAssets();
-
-            // Llamar a la función nativa para clasificar la imagen
             String resultado = clasificarFigura(byteArray, datasetContent);
-
-            // Mostrar el resultado de la clasificación
-            mostrarResultado(resultado);
+            mostrarResultado("Resultado: " + resultado);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -68,17 +62,27 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void evaluarSistema() {
+        try {
+            String datasetContent = leerArchivoDesdeAssets();
+            String resultadoEvaluacion = evaluarSistema(datasetContent);
+            mostrarResultado(resultadoEvaluacion);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Error al evaluar el sistema", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void mostrarResultado(String resultado) {
-        textResultado.setText("Resultado: " + resultado); // CAMBIO: mostrar en el TextView
+        textResultado.setText(resultado);
     }
 
     private void limpiarDibujo() {
         drawingView.limpiar();
-        textResultado.setText("Resultado: -"); // LIMPIAR TEXTO TAMBIÉN
+        textResultado.setText("Resultado: -");
         Toast.makeText(this, "Área de dibujo limpia", Toast.LENGTH_SHORT).show();
     }
 
-    // Función para leer el archivo CSV desde assets y devolverlo como un String
     private String leerArchivoDesdeAssets() {
         StringBuilder stringBuilder = new StringBuilder();
         try {
